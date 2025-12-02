@@ -44,16 +44,7 @@ class StudyNoteApp {
         // Process button
         this.elements.processBtn.addEventListener('click', () => this.processFile());
         
-        // Download buttons
-        this.elements.downloadLatexBtn?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.downloadFile('latex');
-        });
-        
-        this.elements.downloadPdfBtn?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.downloadFile('pdf');
-        });
+        // Download buttons - let them work as normal links (no need for event listeners)
         
         this.elements.compileBtn?.addEventListener('click', () => this.compileExisting());
     }
