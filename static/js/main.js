@@ -116,6 +116,7 @@ class StudyNoteApp {
         formData.append('note_type', this.elements.noteType.value);
         formData.append('include_questions', this.elements.includeQuestions.checked);
         formData.append('compile_pdf', this.elements.compileDirectly.checked);
+        formData.append('use_overleaf', document.getElementById('useOverleaf')?.checked || false);
         
         this.showLoading(true);
         this.hideResults();
@@ -169,8 +170,63 @@ class StudyNoteApp {
         // Show success message
         this.showStatus('Study notes generated successfully!', 'success');
         
+        // Display helpful tips if provided
+        if (result.tips) {
+            this.showTips(result.tips);
+        }
+        
         // Store current filename for later compilation
         this.currentJobId = result.filename;
+    }
+    
+    showTips(tips) {
+        // Create tips element if not exists
+        const tipsId = 'generationTips';
+        let tipsElement = document.getElementById(tipsId);
+        
+        if (!tipsElement) {
+            tipsElement = document.createElement('div');
+            tipsElement.id = tipsId;
+            // Insert after results section or at the end
+            const resultsSection = this.elements.resultsSection;
+            if (resultsSection && resultsSection.nextSibling) {
+                resultsSection.parentNode.insertBefore(tipsElement, resultsSection.nextSibling);
+            } else {
+                document.querySelector('.container-main').appendChild(tipsElement);
+            }
+        }
+        
+        // Build tips HTML
+        let html = '<div class="card mt-4 border-info">';
+        html += '<div class="card-header bg-info text-white"><i class="fas fa-lightbulb me-2"></i><strong>💡 Tips for Best Results</strong></div>';
+        html += '<div class="card-body">';
+        
+        if (tips.latex_quality) {
+            html += `<p class="mb-2"><strong>LaTeX Quality:</strong> <span class="badge bg-success">${tips.latex_quality}</span></p>`;
+        }
+        
+        if (tips.pdf_quality) {
+            html += `<p class="mb-3"><strong>PDF Quality:</strong> <span class="badge bg-warning text-dark">${tips.pdf_quality}</span></p>`;
+        }
+        
+        if (tips.for_professional_output) {
+            html += `<h6 class="mt-3 mb-2">For Professional PDF Output:</h6>`;
+            html += `<p class="text-muted small">${tips.for_professional_output}</p>`;
+        }
+        
+        if (tips.overleaf_steps && tips.overleaf_steps.length > 0) {
+            html += '<h6 class="mt-3 mb-2">How to use Overleaf (Free):</h6>';
+            html += '<ol class="small">';
+            tips.overleaf_steps.forEach(step => {
+                html += `<li>${step}</li>`;
+            });
+            html += '</ol>';
+            html += '<p class="small mt-2"><a href="https://www.overleaf.com" target="_blank" class="btn btn-sm btn-info">Go to Overleaf →</a></p>';
+        }
+        
+        html += '</div></div>';
+        
+        tipsElement.innerHTML = html;
     }
     
     async compileExisting() {

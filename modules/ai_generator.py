@@ -1,13 +1,11 @@
-import google.generativeai as genai
-from typing import Dict, Any
 import os
-import json
 import logging
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
 class AIGenerator:
-    """Handles AI content generation using Gemini"""
+    """Handles AI content generation using Gemini (best free tier model)"""
     
     def __init__(self):
         api_key = os.getenv('GEMINI_API_KEY')
@@ -16,83 +14,124 @@ class AIGenerator:
         
         genai.configure(api_key=api_key)
         
-        # Try to find an available model
-        self.model = self._get_available_model()
+        self.model = self._get_best_model()
         logger.info(f"Using model: {self.model.model_name}")
     
-    def _get_available_model(self):
-        """Get an available model for content generation"""
-        # List of models to try in order of preference
+    def _get_best_model(self):
+        """Get the best available model for LaTeX generation"""
+        # Models ordered by quality for LaTeX/structured output
         models_to_try = [
-            'gemini-2.0-flash',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-pro'
+            'gemini-2.5-pro',         # Best quality - newest pro model
+            'gemini-2.5-flash',       # Good alternative with better features
+            'gemini-1.5-pro',         # Fallback pro model
+            'gemini-1.5-flash',       # Fallback flash model
+            'gemini-pro'              # Last resort
         ]
         
-        logger.info("Attempting to find available model...")
+        print("=" * 60)
+        print("MODEL SELECTION")
+        print("=" * 60)
+        
+        logger.info("Attempting to find best available Gemini model...")
         
         for model_name in models_to_try:
             try:
                 logger.debug(f"Trying model: {model_name}")
+                print(f"  Attempting: {model_name}...")
                 model = genai.GenerativeModel(model_name)
-                # Test if model works
                 logger.info(f"Successfully initialized model: {model_name}")
+                print(f"  ✓ Successfully initialized: {model_name}")
+                print("=" * 60)
                 return model
             except Exception as e:
                 logger.debug(f"Model {model_name} not available: {str(e)}")
+                print(f"  ✗ Not available: {model_name}")
                 continue
         
-        # Fallback: list available models and use the first one
-        logger.warning("Preferred models not available. Listing all models...")
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            if available_models:
-                model_name = available_models[0].replace('models/', '')
-                logger.info(f"Using first available model: {model_name}")
-                return genai.GenerativeModel(model_name)
-        except Exception as e:
-            logger.error(f"Error listing models: {str(e)}")
-        
-        # Final fallback
         logger.error("Could not find any available model. Using gemini-pro as fallback...")
+        print("  ✗ Fallback to gemini-pro")
+        print("=" * 60)
         return genai.GenerativeModel('gemini-pro')
     
     def generate_study_materials(self, text: str, note_type: str = 'detailed', 
                                 include_questions: bool = True) -> str:
         """
-        Generate study materials from extracted text
+        Generate study materials from extracted text using Gemini
         Returns: LaTeX formatted content
         """
         logger.info(f"Starting AI generation with note_type='{note_type}', include_questions={include_questions}")
         logger.debug(f"Input text length: {len(text)} characters")
         
-        # Truncate text if too long (Gemini has token limits)
-        max_text_length = 10000  # Adjust based on your needs
+        print("\n" + "=" * 60)
+        print("AI GENERATION STARTED")
+        print("=" * 60)
+        print(f"Note Type: {note_type}")
+        print(f"Include Questions: {include_questions}")
+        print(f"Input Text Length: {len(text)} characters")
+        
+        # Truncate text if too long
+        max_text_length = 15000
         if len(text) > max_text_length:
             logger.warning(f"Input text exceeds {max_text_length} chars. Truncating...")
             text = text[:max_text_length] + "\n\n[Content truncated due to length]"
+            print(f"⚠ Input truncated to {max_text_length} characters")
         
         prompt = self._build_prompt(text, note_type, include_questions)
         logger.debug(f"Built prompt. Length: {len(prompt)} characters")
+        print(f"Prompt Length: {len(prompt)} characters")
         
         try:
             logger.info("Sending request to Gemini API...")
+            print("\n📤 Sending request to Gemini API...")
+            
             response = self.model.generate_content(
                 prompt,
                 generation_config={
                     'temperature': 0.7,
                     'top_p': 0.8,
                     'top_k': 40,
-                    'max_output_tokens': 2048,
+                    'max_output_tokens': 4096,
                 }
             )
-            logger.info(f"Gemini response received. Response length: {len(response.text)} characters")
             
-            return self._clean_latex_response(response.text)
+            logger.info(f"Gemini response received")
+            
+            # Handle response safely
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
+                    raw_output = candidate.content.parts[0].text
+                else:
+                    raise Exception("Empty response from Gemini")
+            else:
+                raise Exception("No candidates in Gemini response")
+            
+            print(f"📥 Response received!")
+            print(f"Raw Response Length: {len(raw_output)} characters")
+            print("\n" + "-" * 60)
+            print("RAW LATEX OUTPUT FROM AI:")
+            print("-" * 60)
+            print(raw_output)
+            print("-" * 60)
+            
+            cleaned_response = self._clean_latex_response(raw_output)
+            
+            print("\n" + "-" * 60)
+            print("CLEANED LATEX OUTPUT:")
+            print("-" * 60)
+            print(cleaned_response)
+            print("-" * 60)
+            print("=" * 60)
+            print("AI GENERATION COMPLETED")
+            print("=" * 60 + "\n")
+            
+            return cleaned_response
             
         except Exception as e:
             logger.error(f"AI generation failed: {str(e)}", exc_info=True)
+            print(f"\n❌ AI GENERATION FAILED!")
+            print(f"Error: {str(e)}")
+            print("=" * 60 + "\n")
             raise Exception(f"AI generation failed: {str(e)}")
     
     def _build_prompt(self, text: str, note_type: str, include_questions: bool) -> str:
@@ -100,106 +139,159 @@ class AIGenerator:
         logger.debug(f"Building prompt for note_type='{note_type}'")
         
         prompt_templates = {
-            'detailed': {
-                'instructions': """You are an expert tutor and document designer. Generate university-level study notes content for LaTeX.
+            'detailed': """IMPORTANT: Generate ONLY the content that goes INSIDE the document body (no \\documentclass, \\usepackage, \\begin{document}, or \\end{document} commands).
 
-IMPORTANT: Generate ONLY the content that goes INSIDE the document (no \\documentclass, \\begin{document}, or \\end{document} commands).
+DOCUMENT STRUCTURE:
 
-CONTENT STRUCTURE:
-- \\section{Topic Name} for major topics
-- \\subsection{Subtopic Name} for subtopics  
-- \\subsubsection{Details} for detailed sections
-- \\textbf{key terms} for emphasis
-- Use \\textit{italics} for secondary emphasis
-- Create AT LEAST 2-3 tables with \\begin{tabular}...\\end{tabular}
-- Use colored table cells: \\cellcolor{red!20}, \\cellcolor{blue!20}, \\cellcolor{green!20}
-- Include \\textbf{Practical Example:} sections with real-world applications
-- Create math equations using $...$ or $$...$$
-- Use \\begin{enumerate} and \\begin{itemize} for lists
+\\section{Main Topic}
+Introduction and overview.
 
-REQUIRED AT END:
+\\subsection{Key Concept 1}
+Detailed explanation.
+
+\\begin{definition}
+Important definition for this concept.
+\\end{definition}
+
+\\begin{examtip}
+Examiner tip or warning about common mistakes.
+\\end{examtip}
+
+Create comparison tables:
+\\begin{center}
+\\begin{tabular}{l l l}
+\\toprule
+\\textbf{Feature} & \\textbf{Property A} & \\textbf{Property B} \\\\
+\\midrule
+Data 1 & Value & Value \\\\
+Data 2 & Value & Value \\\\
+\\bottomrule
+\\end{tabular}
+\\end{center}
+
+\\subsection{Key Concept 2}
+More detailed content with \\textbf{bold} and \\textit{italic} text.
+
 \\section{Practice Questions}
 
-\\subsection{Conceptual Questions (5 questions)}
+\\subsection{Conceptual Questions}
 \\begin{enumerate}
-\\item [Question 1 - test deep understanding]
-\\item [Question 2 - test deep understanding]
-\\item [Question 3 - test deep understanding]
-\\item [Question 4 - test deep understanding]
-\\item [Question 5 - test deep understanding]
+\\item \\textbf{(3 Marks)} Question 1
+\\item \\textbf{(4 Marks)} Question 2
+\\item \\textbf{(3 Marks)} Question 3
+\\item \\textbf{(4 Marks)} Question 4
+\\item \\textbf{(5 Marks)} Question 5
 \\end{enumerate}
 
-\\subsection{Multiple Choice Questions (5 MCQs with answers)}
+\\subsection{Multiple Choice Questions}
 \\begin{enumerate}
-\\item [MCQ Question 1]
-  \\begin{enumerate}
-  \\item a) [Option A]
-  \\item b) [Option B]
-  \\item c) [Option C]
-  \\item d) [Option D]
-  \\end{enumerate}
-  \\textbf{Answer: [letter]}
+\\item Question 1
+\\\\(a) Option A
+\\\\(b) Option B
+\\\\(c) Correct Answer
+\\\\(d) Option D
+\\\\\\textbf{Correct Answer: c)}
 
-\\item [MCQ Question 2]
-  \\begin{enumerate}
-  \\item a) [Option A]
-  \\item b) [Option B]
-  \\item c) [Option C]
-  \\item d) [Option D]
-  \\end{enumerate}
-  \\textbf{Answer: [letter]}
+\\item Question 2
+\\\\(a) Option
+\\\\(b) Correct Answer
+\\\\(c) Option
+\\\\(d) Option
+\\\\\\textbf{Correct Answer: b)}
 
-[Continue for MCQ 3-5 in same format]
+\\item Question 3
+\\\\(a) Option
+\\\\(b) Option
+\\\\(c) Correct Answer
+\\\\(d) Option
+\\\\\\textbf{Correct Answer: c)}
 
+\\item Question 4
+\\\\(a) Option
+\\\\(b) Option
+\\\\(c) Option
+\\\\(d) Correct Answer
+\\\\\\textbf{Correct Answer: d)}
+
+\\item Question 5
+\\\\(a) Correct Answer
+\\\\(b) Option
+\\\\(c) Option
+\\\\(d) Option
+\\\\\\textbf{Correct Answer: a)}
 \\end{enumerate}
 
 FORMATTING RULES:
-- Use proper LaTeX syntax (all backslashes must be literal \\)
-- DO NOT include \\documentclass, \\usepackage, or \\begin/\\end{document}
-- Create visually organized content with clear hierarchy
-- Include at least 3 colored tables showing key information
-- Make tables informative with headers and highlighted cells
-- Keep content clear, organized, and university-level appropriate
-- Ensure all LaTeX commands are properly closed
+- NO \\documentclass, \\usepackage, \\begin{document}, or \\end{document}
+- Use \\textbf{} for bold, \\textit{} for italics
+- Use \\definition and \\examtip for colored boxes
+- Use \\toprule, \\midrule, \\bottomrule for tables
+- All LaTeX properly closed and balanced
+- Proper spacing between sections
 
-OUTPUT ONLY the raw LaTeX content for the document body. Start with \\section and end with the MCQ section.""",
-                'questions': ""
-            },
-            'concise': {
-                'instructions': """You are an expert tutor. Generate concise, well-structured LaTeX study notes content.
+OUTPUT ONLY LaTeX content. Begin with \\section and end with the MCQ section.""",
+            
+            'concise': """IMPORTANT: Generate ONLY content body (no \\documentclass or \\begin{document}).
 
-IMPORTANT: Generate ONLY content (no \\documentclass or \\begin/\\end{document}).
+\\section{Topic}
+Brief introduction.
 
-STRUCTURE:
-- \\section{} for major topics
-- \\subsection{} for key concepts  
-- Use \\textbf{} for important terms
-- Create 1-2 summary tables with \\cellcolor{} for highlighting
-- Keep explanations brief but comprehensive
-- Use lists for key points
-- End with a summary section
+\\subsection{Key Concept}
+Concise explanation.
 
-OUTPUT ONLY the LaTeX body content.""",
-                'questions': ""
-            },
-            'outline': {
-                'instructions': """You are an expert tutor. Create a comprehensive hierarchical outline in LaTeX format.
+\\begin{definition}
+Essential definition.
+\\end{definition}
 
-IMPORTANT: Generate ONLY content (no \\documentclass or \\begin/\\end{document}).
+\\begin{examtip}
+Quick revision tip.
+\\end{examtip}
 
-STRUCTURE:
-- \\section{} for main topics
-- \\subsection{} for subtopics
-- \\subsubsection{} for details
-- Use \\begin{itemize}...\\end{itemize} for bullet points
-- Create a reference table at the end with \\begin{tabular}
-- Use colors in the table with \\cellcolor{}
+\\begin{center}
+\\begin{tabular}{l l}
+\\toprule
+\\textbf{Item} & \\textbf{Details} \\\\
+\\midrule
+Concept A & Details \\\\
+Concept B & Details \\\\
+\\bottomrule
+\\end{tabular}
+\\end{center}
 
-Keep outline clear and hierarchical.
+\\section{Quick Practice}
+3-5 quick test questions.
 
-OUTPUT ONLY the LaTeX body content.""",
-                'questions': ""
-            }
+OUTPUT ONLY LaTeX content.""",
+            
+            'outline': """IMPORTANT: Generate ONLY content body (no \\documentclass or \\begin{document}).
+
+\\section{Topic}
+
+\\subsection{Concept 1}
+\\begin{itemize}
+\\item \\textbf{Key point 1}
+\\item \\textbf{Key point 2}
+\\end{itemize}
+
+\\subsection{Concept 2}
+\\begin{itemize}
+\\item \\textbf{Key point 1}
+\\item \\textbf{Key point 2}
+\\end{itemize}
+
+\\section{Summary}
+\\begin{center}
+\\begin{tabular}{l l l}
+\\toprule
+\\textbf{Concept} & \\textbf{Definition} & \\textbf{Example} \\\\
+\\midrule
+Concept A & Definition & Example \\\\
+Concept B & Definition & Example \\\\
+\\bottomrule
+\\end{tabular}
+\\end{center}
+
+OUTPUT ONLY LaTeX content."""
         }
         
         if note_type not in prompt_templates:
@@ -211,10 +303,10 @@ OUTPUT ONLY the LaTeX body content.""",
         logger.debug(f"Template selected: {note_type}")
         
         try:
-            prompt = f"""{template['instructions']}
+            prompt = f"""{template}
 
 CONTENT TO ANALYZE:
-{text[:8000]}
+{text}
 
 BEGIN OUTPUT:"""
             logger.debug(f"Prompt built successfully. Length: {len(prompt)} characters")
@@ -235,15 +327,13 @@ BEGIN OUTPUT:"""
             logger.debug("Found ``` code block. Extracting content...")
             text = text.split('```')[1].split('```')[0]
         
-        # Remove any accidental \documentclass or \begin{document} commands that AI might have generated
+        # Remove any accidental \documentclass or \begin{document} commands
         if '\\documentclass' in text:
             logger.debug("Removing accidental \\documentclass command...")
-            # Find the first \section command and start from there
             section_pos = text.find('\\section')
             if section_pos != -1:
                 text = text[section_pos:]
             else:
-                # If no section found, try to remove everything before \begin{document}
                 begin_pos = text.find('\\begin{document}')
                 if begin_pos != -1:
                     text = text[begin_pos + 16:]

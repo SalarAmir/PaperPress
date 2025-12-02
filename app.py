@@ -48,7 +48,8 @@ def process_pdf():
     options = {
         'note_type': request.form.get('note_type', 'detailed'),
         'include_questions': request.form.get('include_questions', 'true') == 'true',
-        'compile_pdf': request.form.get('compile_pdf', 'false') == 'true'
+        'compile_pdf': request.form.get('compile_pdf', 'false') == 'true',
+        'use_overleaf': request.form.get('use_overleaf', 'false') == 'true'
     }
     
     logger.info(f"File received: {file.filename}")
@@ -112,7 +113,7 @@ def process_pdf():
         logger.info("Compiling LaTeX to PDF for download...")
         pdf_path = None
         try:
-            pdf_path = latex_builder.compile_to_pdf(tex_path)
+            pdf_path = latex_builder.compile_to_pdf(tex_path, use_overleaf=options['use_overleaf'])
             logger.info(f"PDF compilation successful: {pdf_path}")
         except Exception as e:
             logger.warning(f"PDF compilation failed: {str(e)}. PDF download may fail, but LaTeX file available.")
@@ -128,7 +129,18 @@ def process_pdf():
             'filename': base_name,
             'latex_url': f'/api/download/{base_name}.tex',
             'pdf_url': f'/api/download/{base_name}.pdf',  # Will compile on download if needed
-            'preview': latex_content[:1000]  # Preview first 1000 chars
+            'preview': latex_content[:1000],  # Preview first 1000 chars
+            'tips': {
+                'latex_quality': 'Perfect ✅ (Ready for Overleaf)',
+                'pdf_quality': 'Good ✅ (ReportLab renderer)',
+                'for_professional_output': 'Download the .tex file and upload to https://www.overleaf.com for professional PDF quality',
+                'overleaf_steps': [
+                    'Copy the download link for the .tex file',
+                    'Go to https://www.overleaf.com and create a free account',
+                    'Create a new project and upload the .tex file',
+                    'Click "Recompile" - get professional PDF!'
+                ]
+            }
         }
         
         logger.info(f"Processing completed successfully. Response: {response}")
